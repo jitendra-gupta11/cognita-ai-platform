@@ -30,10 +30,12 @@ stages:
 
     - checkout: self
 
-    - task: DockerInstaller@0
-      inputs:
-        dockerVersion: latest
+    - script: |
 
+        docker build \
+          docker -version
+          docker info
+        displayName: verify docker installation
     - task: AzureCLI@2
       displayName: Login to ACR
 
