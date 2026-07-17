@@ -33,7 +33,7 @@ stages:
     - script: |
 
         docker build \
-          docker -version
+          docker --version
           docker info
         displayName: verify docker installation
     - task: AzureCLI@2
