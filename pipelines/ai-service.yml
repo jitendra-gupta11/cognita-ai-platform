@@ -9,56 +9,49 @@ pr:
       - main
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: "ubuntu-latest"
 
 variables:
-  serviceConnection: cognita-azure-sc
-  acrName: acratlasdevvsml
-  acrLoginServer: acratlasdevvsml.azurecr.io
-  imageRepository: ai-service
+  serviceConnection: "cognita-azure-sc"
+  acrName: "acratlasdevvsml"
+  acrLoginServer: "acratlasdevvsml.azurecr.io"
+  imageRepository: "ai-service"
 
 stages:
-
 - stage: Build
-  displayName: Build and Push Image
+  displayName: Build and Push Docker Image
 
   jobs:
-
   - job: DockerBuild
+    displayName: Build Image
 
     steps:
-
     - checkout: self
 
     - script: |
+        echo "Verifying Docker installation..."
+        docker --version
+        docker buildx version
+      displayName: Verify Docker Installation
 
-        docker build \
-          docker --version
-          docker info
-        displayName: verify docker installation
     - task: AzureCLI@2
-      displayName: Login to ACR
-
+      displayName: Login to Azure and ACR
       inputs:
         azureSubscription: $(serviceConnection)
         scriptType: bash
         scriptLocation: inlineScript
-
         inlineScript: |
-
+          az account show
           az acr login --name $(acrName)
 
     - script: |
-
         docker build \
           -t $(acrLoginServer)/$(imageRepository):$(Build.BuildId) \
+          -t $(acrLoginServer)/$(imageRepository):latest \
           services/ai-service
-
       displayName: Build Docker Image
 
     - script: |
-
-        docker push \
-          $(acrLoginServer)/$(imageRepository):$(Build.BuildId)
-
+        docker push $(acrLoginServer)/$(imageRepository):$(Build.BuildId)
+        docker push $(acrLoginServer)/$(imageRepository):latest
       displayName: Push Docker Image
