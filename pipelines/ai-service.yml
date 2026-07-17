@@ -9,27 +9,37 @@ pr:
       - main
 
 pool:
-  vmImage: "ubuntu-latest"
+  vmImage: ubuntu-latest
 
 variables:
   serviceConnection: "cognita-azure-sc"
   acrName: "acratlasdevvsml"
   acrLoginServer: "acratlasdevvsml.azurecr.io"
   imageRepository: "ai-service"
+  aksResourceGroup: "rg-atlas-dev"
+  aksClusterName: "aks-atlas-dev"
+  namespace: "applications"
 
 stages:
+
+#=====================================================
+# BUILD STAGE
+#=====================================================
+
 - stage: Build
   displayName: Build and Push Docker Image
 
   jobs:
+
   - job: DockerBuild
-    displayName: Build Image
+    displayName: Build Docker Image
 
     steps:
+
     - checkout: self
 
     - script: |
-        echo "Verifying Docker installation..."
+        echo "Docker Version"
         docker --version
         docker buildx version
       displayName: Verify Docker Installation
@@ -55,3 +65,82 @@ stages:
         docker push $(acrLoginServer)/$(imageRepository):$(Build.BuildId)
         docker push $(acrLoginServer)/$(imageRepository):latest
       displayName: Push Docker Image
+
+
+#=====================================================
+# DEPLOY STAGE
+#=====================================================
+
+- stage: Deploy
+  displayName: Deploy to AKS
+  dependsOn: Build
+  condition: succeeded()
+
+  jobs:
+
+  - job: HelmDeploy
+    displayName: Helm Deployment
+
+    steps:
+
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: Connect to AKS
+      inputs:
+        azureSubscription: $(serviceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+
+          az aks get-credentials \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksClusterName) \
+            --overwrite-existing
+
+          kubectl get nodes
+
+    - task: HelmInstaller@1
+      displayName: Install Helm
+      inputs:
+        helmVersionToInstall: latest
+
+    - script: |
+
+        helm upgrade --install ai-service ./helm/ai-service \
+          --namespace $(namespace) \
+          --create-namespace \
+          --set image.repository=$(acrLoginServer)/$(imageRepository) \
+          --set image.tag=$(Build.BuildId)
+
+      displayName: Deploy using Helm
+
+    - script: |
+
+        echo "Waiting for rollout..."
+
+        kubectl rollout status deployment/ai-service \
+          -n $(namespace) \
+          --timeout=180s
+
+      displayName: Wait for Rollout
+
+    - script: |
+
+        echo "Pods"
+
+        kubectl get pods -n $(namespace)
+
+        echo ""
+
+        echo "Service"
+
+        kubectl get svc -n $(namespace)
+
+        echo ""
+
+        echo "Ingress"
+
+        kubectl get ingress -n $(namespace)
+
+      displayName: Verify Deployment
